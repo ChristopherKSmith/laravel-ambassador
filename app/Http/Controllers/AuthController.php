@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\RegisterRequest;
 use App\Http\Requests\UpdateProfileRequest;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,7 +16,7 @@ class AuthController extends Controller
         $user = User::create($request->only('first_name', 'last_name', 'email')
              + [
                 'password' => \Hash::make($request->password),
-                'is_admin' => 1,
+                'is_admin' => $request->path() === 'api/admin/register' ? 1 : 0,
             ]);
 
         return response($user, Response::HTTP_CREATED);
@@ -29,8 +30,18 @@ class AuthController extends Controller
             ], Response::HTTP_UNAUTHORIZED);
         }
 
-        $user   = \Auth::user();
-        $jwt    = $user->createToken('token', ['admin'])->plainTextToken;
+        $user = \Auth::user();
+
+        $adminLogin = $request->path() === 'api/admin/login';
+
+        if ($adminLogin && !$user->is_admin) {
+            return response([
+                'error' => 'Access Denied!',
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $scope  = $adminLogin ? 'admin' : 'ambassador';
+        $jwt    = $user->createToken('token', [$scope])->plainTextToken;
         $cookie = cookie('jwt', $jwt, 60 * 24);
 
         return response([
@@ -40,7 +51,8 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
-        return $request->user();
+        $user = $request->user();
+        return new UserResource($user);
     }
 
     public function logout()
